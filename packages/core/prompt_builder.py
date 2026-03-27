@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 BharatBI — Prompt Builder
 Assembles the final prompt sent to the LLM for SQL generation.

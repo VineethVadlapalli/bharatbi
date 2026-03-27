@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 BharatBI — MySQL Connector
 Connects to a user's MySQL/MariaDB database.

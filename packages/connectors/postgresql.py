@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 BharatBI — PostgreSQL Connector
 Connects to a user's PostgreSQL database, extracts schema,

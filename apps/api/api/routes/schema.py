@@ -1,38 +1,72 @@
+from __future__ import annotations
+
 """
 BharatBI — Schema API
 Endpoints to browse and edit the semantic schema (LLM-generated descriptions).
 """
 
-from fastapi import APIRouter
+
+"""Schema API — browse and edit schema metadata for a connection."""
+from uuid import UUID
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional
+from sqlalchemy import text
+
+from apps.api.api.db import async_session
 
 router = APIRouter()
 
 
-class SchemaColumn(BaseModel):
-    table_name: str
-    column_name: Optional[str]
-    data_type: Optional[str]
+@router.get("/{connection_id}")
+async def get_schema(connection_id: UUID):
+    """Get all tables and columns for a connection."""
+    async with async_session() as db:
+        result = await db.execute(
+            text("""
+                SELECT table_name, column_name, data_type, description, is_primary_key, foreign_key
+                FROM schema_metadata
+                WHERE connection_id = :cid
+                ORDER BY table_name, column_name
+            """),
+            {"cid": str(connection_id)},
+        )
+        rows = result.mappings().all()
+        if not rows:
+            raise HTTPException(status_code=404, detail="No schema found. Sync the connection first.")
+
+        # Group by table
+        tables = {}
+        for r in rows:
+            tn = r["table_name"]
+            if tn not in tables:
+                tables[tn] = {"table_name": tn, "columns": []}
+            tables[tn]["columns"].append({
+                "column_name": r["column_name"],
+                "data_type": r["data_type"],
+                "description": r["description"],
+                "is_primary_key": r["is_primary_key"],
+                "foreign_key": r["foreign_key"],
+            })
+
+        return list(tables.values())
+
+
+class DescriptionUpdate(BaseModel):
     description: str
 
 
-class UpdateDescriptionRequest(BaseModel):
-    description: str
-
-
-@router.get("/{connection_id}", summary="Get full schema for a connection")
-async def get_schema(connection_id: str):
-    """Returns all tables and columns with their LLM-generated descriptions."""
-    # TODO (Phase 1): Fetch from schema_metadata table
-    return {"connection_id": connection_id, "tables": [], "total_columns": 0}
-
-
-@router.put("/{connection_id}/column", summary="Update a column description")
-async def update_column_description(connection_id: str, req: UpdateDescriptionRequest, table: str, column: str):
-    """
-    Admin can edit the LLM-generated description for any column.
-    The updated description is re-embedded and stored in Qdrant.
-    """
-    # TODO (Phase 1): Update DB + re-embed + update Qdrant
-    return {"message": f"Description for {table}.{column} updated successfully"}
+@router.patch("/{connection_id}/{table_name}/{column_name}")
+async def update_column_description(connection_id: UUID, table_name: str, column_name: str, body: DescriptionUpdate):
+    """Update the description for a specific column (admin edits semantic layer)."""
+    async with async_session() as db:
+        result = await db.execute(
+            text("""
+                UPDATE schema_metadata SET description = :desc
+                WHERE connection_id = :cid AND table_name = :table AND column_name = :col
+            """),
+            {"desc": body.description, "cid": str(connection_id), "table": table_name, "col": column_name},
+        )
+        await db.commit()
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Column not found")
+        return {"status": "updated", "table": table_name, "column": column_name, "description": body.description}

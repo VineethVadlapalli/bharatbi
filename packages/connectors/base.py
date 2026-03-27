@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 BharatBI — Base Connector
 Every data source connector implements this interface.

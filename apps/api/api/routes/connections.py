@@ -1,131 +1,184 @@
+from __future__ import annotations
+
 """
 BharatBI — Connections API
 Handles create, list, test, and sync of data source connections.
 """
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+
+"""Connections API — add, test, list, sync data source connections."""
+from uuid import UUID
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional, Literal
-import uuid
+from sqlalchemy import text
+
+from apps.api.api.db import async_session
+from packages.connectors import get_connector
 
 router = APIRouter()
 
+# Default org/user for local dev
+DEV_ORG_ID = "00000000-0000-0000-0000-000000000001"
+DEV_USER_ID = "00000000-0000-0000-0000-000000000002"
 
-# ── Pydantic models ───────────────────────────────────────────
 
 class ConnectionCreate(BaseModel):
     name: str
-    type: Literal["mysql", "postgresql", "google_sheets", "tally", "zoho_crm", "zoho_books"]
-    # SQL credentials (for mysql/postgresql)
-    host: Optional[str] = None
-    port: Optional[int] = None
-    database: Optional[str] = None
-    username: Optional[str] = None
-    password: Optional[str] = None
-    # OAuth token (for google_sheets, zoho_*)
-    oauth_token: Optional[str] = None
-    # Org context (later: pulled from JWT)
-    org_id: str = "00000000-0000-0000-0000-000000000001"
-
-
-class ConnectionResponse(BaseModel):
-    id: str
-    name: str
-    type: str
-    status: str
-    message: str
-
-
-class TestConnectionRequest(BaseModel):
-    type: Literal["mysql", "postgresql"]
+    conn_type: str  # postgresql, mysql
     host: str
     port: int
-    database: str
+    database_name: str
     username: str
     password: str
 
 
-# ── Routes ────────────────────────────────────────────────────
+class ConnectionTestRequest(BaseModel):
+    conn_type: str
+    host: str
+    port: int
+    database_name: str
+    username: str
+    password: str
 
-@router.post("/test", summary="Test a database connection before saving")
-async def test_connection(req: TestConnectionRequest):
-    """
-    Tests a database connection without saving it.
-    Returns success/fail and a human-readable message.
-    """
+
+@router.post("/test")
+async def test_connection(req: ConnectionTestRequest):
+    """Test if a database connection works before saving."""
     try:
-        if req.type == "postgresql":
-            import asyncpg
-            conn = await asyncpg.connect(
-                host=req.host, port=req.port,
-                database=req.database, user=req.username, password=req.password,
-                timeout=5,
-            )
-            version = await conn.fetchval("SELECT version()")
-            await conn.close()
-            return {"success": True, "message": f"Connected successfully. {version[:50]}..."}
-
-        elif req.type == "mysql":
-            import aiomysql
-            conn = await aiomysql.connect(
-                host=req.host, port=req.port,
-                db=req.database, user=req.username, password=req.password,
-                connect_timeout=5,
-            )
-            conn.close()
-            return {"success": True, "message": "MySQL connection successful."}
-
+        connector = get_connector(req.conn_type, {
+            "host": req.host, "port": req.port,
+            "username": req.username, "password": req.password,
+            "database": req.database_name,
+        })
+        result = await connector.test_connection()
+        await connector.close()
+        return result
     except Exception as e:
-        return {"success": False, "message": str(e)}
+        return {"ok": False, "error": str(e)}
 
 
-@router.post("/", summary="Save a new connection and trigger schema sync")
-async def create_connection(req: ConnectionCreate, background_tasks: BackgroundTasks):
-    """
-    Saves the connection credentials (encrypted) and queues a schema sync job.
-    """
-    connection_id = str(uuid.uuid4())
-
-    # TODO (Phase 1): Encrypt credentials and save to PostgreSQL
-    # TODO (Phase 1): background_tasks.add_task(sync_schema, connection_id)
-
-    return ConnectionResponse(
-        id=connection_id,
-        name=req.name,
-        type=req.type,
-        status="pending",
-        message="Connection saved. Schema sync queued. This takes 1-3 minutes.",
-    )
-
-
-@router.get("/", summary="List all connections for an org")
-async def list_connections(org_id: str = "00000000-0000-0000-0000-000000000001"):
-    """Returns all data source connections for the organization."""
-    # TODO (Phase 1): Fetch from DB
-    return {"connections": [], "total": 0}
+@router.post("")
+async def create_connection(req: ConnectionCreate):
+    """Save a new data source connection."""
+    async with async_session() as db:
+        result = await db.execute(
+            text("""
+                INSERT INTO connections (org_id, name, conn_type, host, port, database_name, username, password_enc, status)
+                VALUES (:org_id, :name, :conn_type, :host, :port, :database_name, :username, :password, 'pending')
+                RETURNING id, name, conn_type, status, created_at
+            """),
+            {
+                "org_id": DEV_ORG_ID, "name": req.name, "conn_type": req.conn_type,
+                "host": req.host, "port": req.port, "database_name": req.database_name,
+                "username": req.username, "password": req.password,
+            },
+        )
+        await db.commit()
+        row = result.mappings().first()
+        return dict(row)
 
 
-@router.get("/{connection_id}/status", summary="Get sync status of a connection")
-async def get_connection_status(connection_id: str):
-    """Poll this endpoint after creating a connection to check sync progress."""
-    # TODO (Phase 1): Fetch from DB
-    return {
-        "id": connection_id,
-        "status": "pending",
-        "progress": 0,
-        "message": "Sync not yet started",
-    }
+@router.get("")
+async def list_connections():
+    """List all connections for the dev org."""
+    async with async_session() as db:
+        result = await db.execute(
+            text("SELECT id, name, conn_type, host, port, database_name, status, last_synced_at, created_at FROM connections WHERE org_id = :org_id ORDER BY created_at DESC"),
+            {"org_id": DEV_ORG_ID},
+        )
+        rows = result.mappings().all()
+        return [dict(r) for r in rows]
 
 
-@router.post("/{connection_id}/sync", summary="Re-trigger schema sync")
-async def sync_connection(connection_id: str, background_tasks: BackgroundTasks):
-    """Re-syncs the schema for a connection (runs embedding pipeline again)."""
-    # TODO (Phase 1): background_tasks.add_task(sync_schema, connection_id)
-    return {"message": f"Schema sync queued for connection {connection_id}"}
+@router.get("/{connection_id}")
+async def get_connection(connection_id: UUID):
+    async with async_session() as db:
+        result = await db.execute(
+            text("SELECT id, name, conn_type, host, port, database_name, status, last_synced_at FROM connections WHERE id = :id"),
+            {"id": str(connection_id)},
+        )
+        row = result.mappings().first()
+        if not row:
+            raise HTTPException(status_code=404, detail="Connection not found")
+        return dict(row)
 
 
-@router.delete("/{connection_id}", summary="Delete a connection")
-async def delete_connection(connection_id: str):
-    """Deletes a connection and all its schema metadata and vectors."""
-    # TODO (Phase 1): Delete from DB + Qdrant
-    return {"message": f"Connection {connection_id} deleted"}
+@router.post("/{connection_id}/sync")
+async def sync_connection(connection_id: UUID):
+    """Trigger schema extraction + embedding pipeline for a connection."""
+    async with async_session() as db:
+        # Verify connection exists
+        result = await db.execute(
+            text("SELECT id, conn_type, host, port, database_name, username, password_enc FROM connections WHERE id = :id"),
+            {"id": str(connection_id)},
+        )
+        row = result.mappings().first()
+        if not row:
+            raise HTTPException(status_code=404, detail="Connection not found")
+
+        # Update status to syncing
+        await db.execute(
+            text("UPDATE connections SET status = 'syncing', updated_at = NOW() WHERE id = :id"),
+            {"id": str(connection_id)},
+        )
+        await db.commit()
+
+    # TODO: In production, dispatch this to Celery worker
+    # For now, run inline for demo
+    try:
+        connector = get_connector(row["conn_type"], {
+            "host": row["host"], "port": row["port"],
+            "username": row["username"], "password": row["password_enc"],
+            "database": row["database_name"],
+        })
+        schema_info = await connector.extract_schema()
+        await connector.close()
+
+        # Chunk and embed
+        from packages.core.chunker import schema_to_chunks
+        from packages.core.embedder import store_chunks
+
+        chunks = schema_to_chunks(schema_info)
+        point_ids = await store_chunks(str(connection_id), chunks)
+        stored_count = len(point_ids)
+
+        # Store schema metadata in DB
+        async with async_session() as db:
+            # Clear old metadata
+            await db.execute(
+                text("DELETE FROM schema_metadata WHERE connection_id = :cid"),
+                {"cid": str(connection_id)},
+            )
+            for table in schema_info.tables:
+                for col in table.columns:
+                    await db.execute(
+                        text("""
+                            INSERT INTO schema_metadata (connection_id, table_name, column_name, data_type, is_primary_key, foreign_key)
+                            VALUES (:cid, :table, :col, :dtype, :pk, :fk)
+                        """),
+                        {
+                            "cid": str(connection_id), "table": table.name, "col": col.name,
+                            "dtype": col.data_type, "pk": col.is_primary_key,
+                            "fk": f"{col.references_table}.{col.references_column}" if col.is_foreign_key else None,
+                        },
+                    )
+            await db.execute(
+                text("UPDATE connections SET status = 'ready', last_synced_at = NOW(), updated_at = NOW() WHERE id = :id"),
+                {"id": str(connection_id)},
+            )
+            await db.commit()
+
+        return {
+            "status": "ready",
+            "tables": len(schema_info.tables),
+            "columns": sum(len(t.columns) for t in schema_info.tables),
+            "vectors_stored": stored_count,
+        }
+    except Exception as e:
+        async with async_session() as db:
+            await db.execute(
+                text("UPDATE connections SET status = 'error', updated_at = NOW() WHERE id = :id"),
+                {"id": str(connection_id)},
+            )
+            await db.commit()
+        raise HTTPException(status_code=500, detail=str(e))

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 BharatBI — OpenAI LLM Provider
 Implements BaseLLMProvider using GPT-4o.
@@ -7,6 +8,7 @@ Temperature is always 0.0 for SQL generation — we want deterministic output.
 
 import os
 import json
+from typing import Optional
 from openai import AsyncOpenAI
 from .base import BaseLLMProvider, SQLGenerationResult, SummaryResult
 
@@ -123,7 +125,3 @@ Respond ONLY with a JSON array of strings, one per item, same order:
             return [""] * len(schema_items)
         except json.JSONDecodeError:
             return [""] * len(schema_items)
-
-
-# Fix missing import
-from typing import Optional

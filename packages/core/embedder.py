@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 BharatBI — Embedder
 Converts text chunks into vectors using OpenAI text-embedding-3-small

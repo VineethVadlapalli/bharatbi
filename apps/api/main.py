@@ -1,43 +1,48 @@
-"""
-BharatBI — FastAPI Backend
-Entry point: uvicorn main:app --reload
-"""
+from __future__ import annotations
+
+"""BharatBI API — main FastAPI application."""
+import os
+from contextlib import asynccontextmanager
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-import os
 
-from api.routes import connections, query, health, schema
-from api.db import init_db
+from apps.api.api.routes import health, connections, query, schema
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup and shutdown events."""
-    await init_db()
+    """Startup / shutdown events."""
+    print("🇮🇳 BharatBI API starting...")
     yield
+    print("BharatBI API shutting down.")
 
 
 app = FastAPI(
     title="BharatBI API",
-    description="India's first open-source GenBI system — API backend",
+    description="India's First Open-Source GenBI System",
     version="0.1.0",
     lifespan=lifespan,
 )
 
-# ── CORS ──────────────────────────────────────────────────────
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+# CORS — allow frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        os.getenv("FRONTEND_URL", ""),
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ── Routes ────────────────────────────────────────────────────
-app.include_router(health.router,       prefix="/api",              tags=["Health"])
-app.include_router(connections.router,  prefix="/api/connections",  tags=["Connections"])
-app.include_router(query.router,        prefix="/api/query",        tags=["Query"])
-app.include_router(schema.router,       prefix="/api/schema",       tags=["Schema"])
+# Mount routes
+app.include_router(health.router, tags=["Health"])
+app.include_router(connections.router, prefix="/api/connections", tags=["Connections"])
+app.include_router(query.router, prefix="/api", tags=["Query"])
+app.include_router(schema.router, prefix="/api/schema", tags=["Schema"])

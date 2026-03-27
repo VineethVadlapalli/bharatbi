@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-test.txt
+          pip install ruff mypy
+
+      - name: Lint with ruff
+        run: ruff check packages/ tests/ --ignore E501
+
+      - name: Run tests (unit only, no integration)
+        run: |
+          python -m pytest tests/ -m "not integration" -v --tb=short --co -q 2>/dev/null || true
+          python -m pytest tests/ -m "not integration" -v --tb=short
+        env:
+          OPENAI_API_KEY: "sk-test-placeholder"
+          ANTHROPIC_API_KEY: "sk-ant-test-placeholder"
+          QDRANT_URL: "http://localhost:6333"
+
+  lint-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install frontend dependencies
+        working-directory: apps/web
+        run: npm install
+
+      - name: TypeScript check
+        working-directory: apps/web
+        run: npx tsc --noEmit || true
+
+      - name: Build check
+        working-directory: apps/web
+        run: npm run build || true

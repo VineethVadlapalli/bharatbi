@@ -1,9 +1,10 @@
+from __future__ import annotations
+
 from fastapi import APIRouter
-from datetime import datetime
 
 router = APIRouter()
 
 
 @router.get("/health")
-async def health():
-    return {"status": "ok", "service": "bharatbi-api", "timestamp": datetime.utcnow().isoformat()}
+async def health_check():
+    return {"status": "healthy", "service": "bharatbi-api", "version": "0.1.0"}

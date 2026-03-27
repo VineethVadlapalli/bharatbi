@@ -4,19 +4,19 @@ WORKDIR /app
 
 # System deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential libpq-dev curl \
-    && rm -rf /var/lib/apt/lists/*
+    gcc libpq-dev && rm -rf /var/lib/apt/lists/*
 
 # Python deps
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY apps/api/requirements.txt /app/apps/api/requirements.txt
+RUN pip install --no-cache-dir -r /app/apps/api/requirements.txt
 
 # Copy source
-COPY . .
+COPY packages/ /app/packages/
+COPY apps/api/ /app/apps/api/
 
-# Add shared packages to PYTHONPATH
-ENV PYTHONPATH=/app:/packages
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

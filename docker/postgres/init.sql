@@ -1,101 +1,106 @@
--- BharatBI — PostgreSQL initialization script
--- This runs once when the local dev postgres container starts.
--- In production, use Supabase migrations instead.
+-- =============================================================================
+-- BharatBI App Schema — internal tables for the platform itself
+-- This is NOT the user's data — this stores connections, queries, metadata.
+-- =============================================================================
 
--- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- Organizations
 CREATE TABLE IF NOT EXISTS organizations (
-    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name        TEXT NOT NULL,
-    plan        TEXT NOT NULL DEFAULT 'free',  -- free | pro | business | enterprise
-    llm_provider TEXT NOT NULL DEFAULT 'openai', -- openai | anthropic
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(100) NOT NULL,
+    plan VARCHAR(20) DEFAULT 'free',
+    llm_provider VARCHAR(20) DEFAULT 'openai',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 
 -- Users
 CREATE TABLE IF NOT EXISTS users (
-    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    org_id      UUID REFERENCES organizations(id) ON DELETE CASCADE,
-    email       TEXT NOT NULL UNIQUE,
-    role        TEXT NOT NULL DEFAULT 'analyst', -- admin | analyst | viewer
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    name VARCHAR(100),
+    org_id UUID REFERENCES organizations(id),
+    role VARCHAR(20) DEFAULT 'admin',
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
--- Data source connections
+-- Data source connections (credentials encrypted before storage)
 CREATE TABLE IF NOT EXISTS connections (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    org_id          UUID REFERENCES organizations(id) ON DELETE CASCADE,
-    name            TEXT NOT NULL,
-    type            TEXT NOT NULL, -- mysql | postgresql | google_sheets | tally | zoho_crm | zoho_books
-    credentials_enc TEXT,          -- AES-encrypted JSON blob
-    status          TEXT NOT NULL DEFAULT 'pending', -- pending | syncing | ready | error
-    last_synced_at  TIMESTAMPTZ,
-    error_message   TEXT,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    org_id UUID REFERENCES organizations(id),
+    name VARCHAR(100) NOT NULL,
+    conn_type VARCHAR(30) NOT NULL,  -- postgresql, mysql, google_sheets, tally, zoho
+    host VARCHAR(255),
+    port INTEGER,
+    database_name VARCHAR(100),
+    username VARCHAR(100),
+    password_enc TEXT,  -- encrypted
+    extra_config JSONB DEFAULT '{}',
+    status VARCHAR(20) DEFAULT 'pending',  -- pending, syncing, ready, error
+    last_synced_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- Schema metadata (enriched by LLM)
+-- Schema metadata (LLM-generated descriptions for each column)
 CREATE TABLE IF NOT EXISTS schema_metadata (
-    id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     connection_id UUID REFERENCES connections(id) ON DELETE CASCADE,
-    table_name    TEXT NOT NULL,
-    column_name   TEXT,              -- NULL means this row describes the table itself
-    data_type     TEXT,
-    description   TEXT NOT NULL,     -- LLM-generated human-readable description
-    vector_id     TEXT,              -- Qdrant point ID
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(connection_id, table_name, column_name)
+    table_name VARCHAR(100) NOT NULL,
+    column_name VARCHAR(100),
+    data_type VARCHAR(50),
+    description TEXT,
+    is_primary_key BOOLEAN DEFAULT FALSE,
+    foreign_key VARCHAR(200),
+    vector_id VARCHAR(100),
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
 -- Query history
 CREATE TABLE IF NOT EXISTS queries (
-    id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    org_id        UUID REFERENCES organizations(id) ON DELETE CASCADE,
-    user_id       UUID REFERENCES users(id) ON DELETE SET NULL,
-    connection_id UUID REFERENCES connections(id) ON DELETE SET NULL,
-    question      TEXT NOT NULL,
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    org_id UUID REFERENCES organizations(id),
+    user_id UUID REFERENCES users(id),
+    connection_id UUID REFERENCES connections(id),
+    question TEXT NOT NULL,
     generated_sql TEXT,
-    row_count     INTEGER,
-    duration_ms   INTEGER,
-    llm_provider  TEXT,
-    llm_model     TEXT,
-    status        TEXT NOT NULL DEFAULT 'success', -- success | error
+    result_row_count INTEGER,
+    duration_ms INTEGER,
+    llm_provider VARCHAR(20),
+    llm_model VARCHAR(50),
+    status VARCHAR(20) DEFAULT 'pending',  -- pending, success, error
     error_message TEXT,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    chart_type VARCHAR(30),
+    summary TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
 -- Saved / pinned questions
 CREATE TABLE IF NOT EXISTS saved_questions (
-    id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    org_id     UUID REFERENCES organizations(id) ON DELETE CASCADE,
-    query_id   UUID REFERENCES queries(id) ON DELETE CASCADE,
-    name       TEXT NOT NULL,
-    is_pinned  BOOLEAN NOT NULL DEFAULT FALSE,
-    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    org_id UUID REFERENCES organizations(id),
+    query_id UUID REFERENCES queries(id),
+    name VARCHAR(200),
+    is_pinned BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
--- Encrypted LLM API keys (per org)
+-- API keys (user-provided OpenAI / Anthropic keys, encrypted)
 CREATE TABLE IF NOT EXISTS api_keys (
-    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    org_id      UUID REFERENCES organizations(id) ON DELETE CASCADE,
-    provider    TEXT NOT NULL, -- openai | anthropic
-    key_enc     TEXT NOT NULL, -- encrypted
-    is_active   BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(org_id, provider)
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    org_id UUID REFERENCES organizations(id),
+    provider VARCHAR(20) NOT NULL,
+    key_enc TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW()
 );
 
--- Seed a default dev org and user for local development
+-- Seed a default org and user for local dev
 INSERT INTO organizations (id, name, plan) VALUES
-    ('00000000-0000-0000-0000-000000000001', 'Dev Org', 'pro')
+    ('00000000-0000-0000-0000-000000000001', 'Dev Organization', 'pro')
 ON CONFLICT DO NOTHING;
 
-INSERT INTO users (id, org_id, email, role) VALUES
-    ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'dev@bharatbi.local', 'admin')
+INSERT INTO users (id, email, name, org_id, role) VALUES
+    ('00000000-0000-0000-0000-000000000002', 'dev@bharatbi.in', 'Dev User', '00000000-0000-0000-0000-000000000001', 'admin')
 ON CONFLICT DO NOTHING;

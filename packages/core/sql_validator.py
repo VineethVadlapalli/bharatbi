@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 BharatBI — SQL Validator
 Validates generated SQL before executing it on the user's database.
@@ -34,8 +35,10 @@ def parse_sql(sql: str, dialect: str = "postgresql") -> tuple[bool, str]:
         if sql_upper.startswith(keyword) or f" {keyword}" in sql_upper:
             return False, f"Dangerous SQL statement blocked: starts with {keyword.strip()}"
 
+    # sqlglot uses "postgres" not "postgresql"
+    sqlglot_dialect = "postgres" if dialect == "postgresql" else dialect
     try:
-        parsed = sqlglot.parse(sql, dialect=dialect)
+        parsed = sqlglot.parse(sql, dialect=sqlglot_dialect)
         if not parsed:
             return False, "SQL parsed to empty AST"
         return True, ""

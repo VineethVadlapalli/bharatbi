@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 BharatBI — Chart Recommender
 Analyses the SQL result shape and recommends the best chart type.

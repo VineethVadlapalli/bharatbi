@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 BharatBI — Connector Registry
 Single entry point: get_connector(type, credentials) → BaseConnector

@@ -1,104 +1,205 @@
-"""
-BharatBI — Query API (Phase 1 — Real Implementation)
-The heart of BharatBI: takes a natural language question,
-runs the full RAG pipeline, and returns SQL + results + chart + summary.
-"""
+from __future__ import annotations
 
-from fastapi import APIRouter
+"""Query API — the main BharatBI pipeline: question → SQL → results → chart → summary."""
+
+import json
+import time
+import datetime
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional, Literal, Any
+from sqlalchemy import text
+
+from apps.api.api.db import async_session
+from packages.connectors import get_connector
+from packages.core.embedder import search_schema
+from packages.core.prompt_builder import build_sql_prompt
+from packages.core.sql_validator import parse_sql, validate_and_fix_sql
+from packages.charts.recommender import recommend_chart
+from packages.llm import get_llm_provider
 
 router = APIRouter()
 
+DEV_ORG_ID = "00000000-0000-0000-0000-000000000001"
+DEV_USER_ID = "00000000-0000-0000-0000-000000000002"
 
-# ── Pydantic models ───────────────────────────────────────────
 
 class QueryRequest(BaseModel):
     question: str
     connection_id: str
-    llm_provider: Literal["openai", "anthropic"] = "openai"
-    org_id: str = "00000000-0000-0000-0000-000000000001"
-    user_id: Optional[str] = None
+    llm_provider: str = "openai"  # openai or anthropic
 
 
-class ChartConfig(BaseModel):
-    chart_type: str        # bar | line | pie | table
-    x_axis: Optional[str] = None
-    y_axis: Optional[str] = None
-    title: str = ""
-
-
-class QueryResponse(BaseModel):
-    query_id: str
-    question: str
-    sql: str
-    columns: list[str]
-    rows: list[list[Any]]
-    row_count: int
-    chart: ChartConfig
-    summary: str               # AI-written plain English insight
-    suggested_questions: list[str]
-    duration_ms: int
-    llm_provider: str
-    llm_model: str
-
-
-# ── Route ─────────────────────────────────────────────────────
-
-@router.post("/", response_model=QueryResponse, summary="Run a natural language query")
+@router.post("/query")
 async def run_query(req: QueryRequest):
-    """
-    The main BharatBI query endpoint.
+    """Full 10-step query pipeline."""
+    start_time = time.time()
 
-    Pipeline:
-    1. Embed user question (OpenAI text-embedding-3-small)
-    2. Search Qdrant for relevant schema chunks (top 8)
-    3. Build prompt (system + schema context + question)
-    4. Call LLM → get SQL
-    5. Validate SQL (sqlglot parse + EXPLAIN)
-    6. Execute SQL on user's database
-    7. Recommend chart type
-    8. Generate plain English summary (second LLM call)
-    9. Generate suggested follow-up questions
-    10. Return everything
-    """
-    start = time.time()
-    query_id = str(uuid.uuid4())
+    # Step 1: Get connection details
+    async with async_session() as db:
+        result = await db.execute(
+            text("SELECT * FROM connections WHERE id = :id AND status = 'ready'"),
+            {"id": req.connection_id},
+        )
+        conn_row = result.mappings().first()
+        if not conn_row:
+            raise HTTPException(
+                status_code=400,
+                detail="Connection not found or not synced. Run /api/connections/{id}/sync first.",
+            )
 
-    # ── TODO (Phase 1 — Step 1.4): Implement each step ────────
-    # from packages.core.embedder import embed_text
-    # from packages.core.retriever import search_schema
-    # from packages.llm.router import get_llm_provider
-    # from packages.core.prompt_builder import build_sql_prompt
-    # from packages.core.sql_validator import validate_and_execute
-    # from packages.charts.recommender import recommend_chart
-    #
-    # question_vector = await embed_text(req.question)
-    # schema_chunks = await search_schema(question_vector, req.connection_id, top_k=8)
-    # prompt = build_sql_prompt(req.question, schema_chunks, dialect="postgresql")
-    # llm = get_llm_provider(req.llm_provider)
-    # sql = await llm.generate_sql(prompt)
-    # rows, columns = await validate_and_execute(sql, req.connection_id, max_retries=3)
-    # chart = recommend_chart(columns, rows)
-    # summary = await llm.summarize(req.question, rows[:5], columns)
-    # suggested = await llm.suggest_follow_ups(req.question, schema_chunks)
-
-    # ── Stub response for skeleton (remove in Phase 1) ─────────
-    duration_ms = int((time.time() - start) * 1000)
-    return QueryResponse(
-        query_id=query_id,
+    # Step 2: Embed the user's question and search Qdrant
+    schema_chunks = await search_schema(
         question=req.question,
-        sql="-- Query pipeline not yet implemented. Coming in Phase 1.",
-        columns=["status"],
-        rows=[["skeleton response"]],
-        row_count=1,
-        chart=ChartConfig(chart_type="table", title="Result"),
-        summary="BharatBI query engine is being built. Check back in Phase 1!",
-        suggested_questions=[
-            "What data sources are connected?",
-            "How do I add a MySQL database?",
-        ],
-        duration_ms=duration_ms,
-        llm_provider=req.llm_provider,
-        llm_model="gpt-4o" if req.llm_provider == "openai" else "claude-sonnet-4-5",
+        connection_id=req.connection_id,
+        top_k=8,
     )
+
+    if not schema_chunks:
+        raise HTTPException(status_code=400, detail="No schema context found. Please sync the connection first.")
+
+    # Step 3: Build the prompt
+    dialect = conn_row["conn_type"]
+    prompt = build_sql_prompt(
+        question=req.question,
+        schema_chunks=schema_chunks,
+        dialect=dialect,
+    )
+
+    # Step 4: Call LLM to generate SQL
+    llm = get_llm_provider(req.llm_provider)
+    llm_result = await llm.generate_sql(prompt)
+    generated_sql = llm_result.sql
+    explanation = llm_result.explanation
+
+    if not generated_sql:
+        raise HTTPException(status_code=400, detail="LLM did not generate SQL.")
+
+    # Step 5: Validate SQL (with auto-retry)
+    credentials = {
+        "host": conn_row["host"],
+        "port": conn_row["port"],
+        "username": conn_row["username"],
+        "password": conn_row["password_enc"],
+        "database": conn_row["database_name"],
+    }
+    connector = get_connector(dialect, credentials)
+
+    final_sql, validation_error = await validate_and_fix_sql(
+        sql=generated_sql,
+        dialect=dialect,
+        connector=connector,
+        llm_provider=llm,
+        original_question=req.question,
+        schema_chunks=schema_chunks,
+        max_retries=3,
+    )
+
+    if validation_error:
+        await connector.close()
+        raise HTTPException(
+            status_code=400,
+            detail=f"SQL validation failed: {validation_error}",
+        )
+
+    # Step 6: Execute SQL on user's database
+    try:
+        columns, rows = await connector.execute_query(final_sql)
+    except Exception as e:
+        await connector.close()
+        raise HTTPException(status_code=400, detail=f"SQL execution error: {str(e)}")
+    finally:
+        await connector.close()
+
+    row_count = len(rows)
+
+    # Step 7: Recommend chart
+    chart_config = recommend_chart(columns, rows)
+
+    # Step 8: Generate AI summary
+    summary_text = ""
+    suggested_questions = []
+    try:
+        summary_result = await llm.summarize(
+            question=req.question,
+            columns=columns,
+            rows=rows,
+        )
+        summary_text = summary_result.summary
+        suggested_questions = summary_result.suggested_questions
+    except Exception:
+        summary_text = f"Query returned {row_count} rows."
+
+    # Step 9: Save to query history
+    duration_ms = int((time.time() - start_time) * 1000)
+    query_id = None
+    try:
+        async with async_session() as db:
+            result = await db.execute(
+                text("""
+                    INSERT INTO queries (org_id, user_id, connection_id, question, generated_sql,
+                        result_row_count, duration_ms, llm_provider, status, chart_type, summary)
+                    VALUES (:org_id, :user_id, :cid, :question, :sql, :rows, :ms, :llm, 'success', :chart, :summary)
+                    RETURNING id
+                """),
+                {
+                    "org_id": DEV_ORG_ID, "user_id": DEV_USER_ID,
+                    "cid": req.connection_id, "question": req.question,
+                    "sql": final_sql, "rows": row_count, "ms": duration_ms,
+                    "llm": req.llm_provider,
+                    "chart": chart_config.chart_type if chart_config else None,
+                    "summary": summary_text,
+                },
+            )
+            await db.commit()
+            query_id = str(result.scalars().first())
+    except Exception:
+        pass
+
+    # Step 10: Serialize and return
+    serialized_rows = []
+    for row in rows:
+        serialized = []
+        for v in row:
+            if isinstance(v, (datetime.date, datetime.datetime)):
+                serialized.append(v.isoformat())
+            elif isinstance(v, (int, float, str, bool, type(None))):
+                serialized.append(v)
+            else:
+                serialized.append(str(v))
+        serialized_rows.append(serialized)
+
+    return {
+        "query_id": query_id,
+        "question": req.question,
+        "sql": final_sql,
+        "explanation": explanation,
+        "columns": columns,
+        "rows": serialized_rows[:1000],
+        "row_count": row_count,
+        "chart": {
+            "chart_type": chart_config.chart_type,
+            "title": chart_config.title,
+            "echarts_option": chart_config.echarts_option,
+        } if chart_config else None,
+        "summary": summary_text,
+        "suggested_questions": suggested_questions,
+        "duration_ms": duration_ms,
+        "llm_provider": req.llm_provider,
+    }
+
+
+@router.get("/queries")
+async def list_queries(limit: int = 20):
+    """Get recent query history."""
+    async with async_session() as db:
+        result = await db.execute(
+            text("""
+                SELECT id, question, generated_sql, result_row_count, duration_ms,
+                       llm_provider, status, chart_type, summary, created_at
+                FROM queries WHERE org_id = :org_id
+                ORDER BY created_at DESC LIMIT :limit
+            """),
+            {"org_id": DEV_ORG_ID, "limit": limit},
+        )
+        rows = result.mappings().all()
+        return [dict(r) for r in rows]
