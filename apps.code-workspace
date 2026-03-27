@@ -1,0 +1,25 @@
+{
+	"folders": [
+		{
+			"path": "apps"
+		},
+		{
+			"path": "bharatbi"
+		},
+		{
+			"path": "docker"
+		},
+		{
+			"path": "docs"
+		},
+		{
+			"path": "examples"
+		},
+		{
+			"path": "packages"
+		},
+		{
+			"path": "scripts"
+		}
+	]
+}
