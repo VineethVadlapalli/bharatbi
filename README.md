@@ -1,162 +1,186 @@
-# 🇮🇳 BharatBI
+<p align="center">
+  <img src="https://img.shields.io/badge/🇮🇳-Made_in_India-orange?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Status-Active-brightgreen?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Tests-86_Passing-success?style=for-the-badge" />
+</p>
 
-> **India's first open-source GenBI system.** Ask questions about your business data in plain English — BharatBI writes the SQL, runs it, and gives you charts + AI insights. No SQL knowledge needed.
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![GitHub Stars](https://img.shields.io/github/stars/VineethVadlapalli/bharatbi?style=social)](https://github.com/VineethVadlapalli/bharatbi)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+<h1 align="center">BharatBI</h1>
+<p align="center"><strong>India's First Open-Source GenBI System</strong></p>
+<p align="center">Ask questions about your business data in plain English — BharatBI generates SQL, runs it, and returns charts, tables, and insights. No SQL knowledge needed.</p>
 
 ---
 
 ## What is BharatBI?
 
-BharatBI connects to your existing data sources — MySQL, PostgreSQL, Google Sheets, **Tally**, or **Zoho** — and lets anyone on your team ask questions in plain English:
+BharatBI is an open-source, AI-powered Business Intelligence platform built specifically for Indian businesses. Connect your database, Tally export, or Google Sheets — and start asking questions in plain English.
 
-> _"What were my top 10 customers by revenue last month?"_
-> _"Show me GST collected this financial year by state."_
-> _"Which products had declining sales in Q3?"_
+**The only GenBI system that understands Indian business reality:** Tally exports, Indian fiscal year (April–March), GST/CGST/SGST/IGST, INR formatting (lakh/crore), and the deep suspicion Indian businesses have about their data leaving their premises.
 
-BharatBI returns a **chart**, a **data table**, and a **plain English AI summary**. No dashboards to configure. No SQL to write.
+## Features
 
-**Built for India** — supports Tally exports, Zoho CRM/Books, Indian fiscal year (April–March), INR formatting, and GST workflows out of the box.
+| Feature | Description |
+|---------|-------------|
+| **Natural Language → SQL** | Ask questions in English. Get SQL generated, validated, and executed automatically |
+| **Auto Charts** | Line, bar, pie, horizontal bar, grouped bar — auto-detected from your data shape |
+| **AI Summaries** | Every result comes with a plain English insight using Indian number formatting |
+| **Tally Connector** | Upload Tally XML or Excel exports. BharatBI auto-maps vouchers, ledgers, stock items |
+| **Google Sheets** | Connect via OAuth or simply upload a CSV export |
+| **PostgreSQL + MySQL** | Native connectors with schema extraction, sample values, FK detection |
+| **Multi-LLM** | Choose OpenAI GPT-4o or Anthropic Claude — switch with one click |
+| **Pin to Dashboard** | Pin any query result as a dashboard card with one-click refresh |
+| **Scheduled Reports** | Run queries on a cron schedule, email results as CSV/PDF |
+| **Alerts** | Monitor metrics against thresholds — get notified when revenue drops |
+| **Multi-User Teams** | Invite members with role-based access (Admin / Analyst / Viewer) |
+| **SQL Explainer** | "Explain this SQL" button — breaks down queries for non-technical users |
+| **Schema Explorer** | Browse your tables and columns with search |
+| **Query History** | All past questions saved with timing and results |
+| **Indian FY Aware** | "This year" = April–March. GST terminology. INR formatting. |
 
----
+## Architecture
 
-## Why BharatBI?
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐
+│  Next.js UI  │────▶│  FastAPI API  │────▶│ User's Own  │
+│  (Vercel)    │     │  (Railway)   │     │  Database   │
+└─────────────┘     └──────┬───────┘     └─────────────┘
+                           │
+              ┌────────────┼────────────┐
+              ▼            ▼            ▼
+        ┌──────────┐ ┌──────────┐ ┌──────────┐
+        │ OpenAI / │ │  Qdrant  │ │PostgreSQL│
+        │ Anthropic│ │ (Vectors)│ │ (App DB) │
+        └──────────┘ └──────────┘ └──────────┘
+```
 
-| Pain | What every other tool does | What BharatBI does |
-|------|----------------------------|--------------------|
-| Tally dominance | Ignores it | Native Tally XML/Excel import |
-| Google Sheets as DB | No support | Direct connector, treats sheets as tables |
-| Zoho ecosystem | No support | OAuth connectors for CRM + Books |
-| Data privacy fear | Your data → their cloud | Schema only goes to LLM. Raw data never leaves you. |
-| INR / GST workflows | USD-first, no GST | Indian FY, INR, GST dashboard templates |
-| ₹ pricing | $50–500/month | Free forever (self-host) · ₹999/month (cloud) |
+**How a query works (10 steps, ~5 seconds):**
 
----
+1. User types question → embed it with OpenAI
+2. Search Qdrant for relevant schema chunks (top 8)
+3. Build prompt with schema context + Indian FY + few-shot examples
+4. LLM generates SQL (temperature=0 for deterministic output)
+5. Validate: parse with sqlglot → EXPLAIN on target DB → auto-retry if error
+6. Execute SQL on user's own database (data never leaves their system)
+7. Auto-detect chart type from result shape
+8. Generate AI summary with Indian number formatting
+9. Suggest 3 follow-up questions
+10. Return everything: SQL + table + chart + summary + suggestions
 
-## Quick Start (Docker — 1 command)
+## Quick Start
 
 ```bash
 # 1. Clone
 git clone https://github.com/VineethVadlapalli/bharatbi.git
 cd bharatbi
 
-# 2. Copy env file
+# 2. Configure
 cp .env.example .env
-# Edit .env — add your OpenAI or Anthropic API key
+# Edit .env → add your OpenAI and/or Anthropic API keys
 
-# 3. Run everything
-docker-compose up
+# 3. Run (all 6 services start with one command)
+docker-compose up --build
+
+# 4. Open
+# API:      http://localhost:8000/docs
+# Frontend: http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) — that's it.
+**First-time setup:**
+1. Go to http://localhost:3000/connections
+2. Add a database connection (or upload a Tally/CSV file)
+3. Click "Sync" to extract and embed the schema
+4. Go to Chat → ask your first question!
 
-> **No Docker?** See [Manual Setup Guide](docs/setup/manual.md)
-
----
-
-## Architecture
-
-```
-User question (English)
-        ↓
-   Next.js frontend  (Vercel)
-        ↓
-   FastAPI backend   (Railway)
-        ↓
-  Embed question → Search Qdrant (schema vectors) → Build prompt → LLM (GPT-4o / Claude)
-        ↓
-   Generated SQL → Validate → Execute on YOUR database
-        ↓
-   Chart (ECharts) + Table + AI summary → back to user
-```
-
-Your actual data **never** leaves your database. Only schema metadata (table/column names + descriptions) is sent to the LLM.
-
----
-
-## Supported Data Sources
-
-| Source | Status | Notes |
-|--------|--------|-------|
-| PostgreSQL | ✅ Phase 1 | Full support |
-| MySQL | ✅ Phase 1 | Full support |
-| Google Sheets | ✅ Phase 2 | OAuth, treats tabs as tables |
-| Tally (XML/Excel export) | ✅ Phase 2 | Day book, ledger, stock summary |
-| Zoho CRM | ✅ Phase 2 | OAuth, leads/deals/contacts |
-| Zoho Books | ✅ Phase 2 | OAuth, invoices/GST/expenses |
-| More... | 🗺️ Roadmap | See [ROADMAP.md](docs/ROADMAP.md) |
-
----
+A sample Indian e-commerce dataset (15 customers, 60 orders, GST invoices) is pre-loaded in the demo database for testing.
 
 ## Tech Stack
 
-- **Frontend**: Next.js 14 + TypeScript + Tailwind CSS
-- **Backend**: FastAPI (Python 3.11)
-- **LLMs**: OpenAI GPT-4o · Anthropic Claude Sonnet (user picks)
-- **Vector DB**: Qdrant (self-hosted)
-- **App DB**: PostgreSQL via Supabase
-- **Charts**: Apache ECharts
-- **Jobs**: Celery + Redis
-- **Payments**: Razorpay (INR)
+| Layer | Technology |
+|-------|-----------|
+| Frontend | Next.js 14, TypeScript, Tailwind CSS, ECharts |
+| Backend | FastAPI, Python 3.11+ |
+| LLM | OpenAI GPT-4o, Anthropic Claude Sonnet |
+| Embeddings | OpenAI text-embedding-3-small |
+| Vector DB | Qdrant (self-hosted) |
+| App DB | PostgreSQL (Supabase) |
+| Charts | Apache ECharts |
+| Background Jobs | Celery + Redis |
+| State Management | Zustand |
 
----
+## India-Specific Design
+
+| Pain Point | BharatBI Solution |
+|-----------|------------------|
+| 80%+ SMBs use Tally | Native Tally XML/Excel import |
+| Millions run business on Google Sheets | Direct Sheets/CSV connector |
+| ₹50-500/month SaaS tools too expensive | Free open-source. Self-host forever |
+| "Our data can't leave our server" | Only schema metadata goes to LLM. Raw data stays on your DB |
+| Indian FY is April–March, not Jan–Dec | FY-aware prompts. "This year" = correct FY |
+| GST/CGST/SGST/IGST complexity | Pre-built Indian accounting templates |
+| No SQL skills in most SMBs | Plain English only. SQL hidden by default |
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Health check |
+| POST | `/api/connections/test` | Test a database connection |
+| POST | `/api/connections` | Save a connection |
+| POST | `/api/connections/{id}/sync` | Extract schema + embed |
+| POST | `/api/query` | Ask a question → get SQL + results + chart |
+| GET | `/api/queries` | Query history |
+| GET | `/api/schema/{id}` | Browse schema metadata |
+| POST | `/api/tally/upload` | Upload Tally XML/Excel |
+| POST | `/api/sheets/upload-csv` | Upload CSV from Google Sheets |
+| POST | `/api/dashboard/pin` | Pin a query to dashboard |
+| GET | `/api/dashboard/pinned` | List dashboard cards |
+| POST | `/api/reports/schedules` | Create scheduled report |
+| POST | `/api/reports/alerts` | Create threshold alert |
+| POST | `/api/explain-sql` | Explain SQL in plain English |
+| POST | `/api/teams/invite` | Invite team member |
+| GET | `/api/teams/members` | List team |
+
+Full API docs at `http://localhost:8000/docs` (Swagger UI).
 
 ## Project Structure
 
 ```
 bharatbi/
 ├── apps/
-│   ├── web/          # Next.js frontend
-│   └── api/          # FastAPI backend
+│   ├── api/                    # FastAPI backend
+│   │   ├── main.py             # App entry point, route mounting
+│   │   ├── api/routes/         # All API endpoints
+│   │   └── requirements.txt    # Python dependencies
+│   └── web/                    # Next.js frontend
+│       ├── app/                # Pages (chat, connections, dashboard, etc.)
+│       ├── components/         # Shared UI components
+│       └── lib/                # API client, store, utilities
 ├── packages/
-│   ├── core/         # Schema parser, embedder, SQL validator, prompt builder
-│   ├── connectors/   # MySQL, PostgreSQL, Google Sheets, Tally, Zoho
-│   ├── llm/          # OpenAI + Anthropic abstraction layer
-│   └── charts/       # Chart type recommender
-├── docker/           # Docker configs
-├── docs/             # Documentation
-├── examples/         # Sample Indian datasets
-└── scripts/          # Dev utilities
+│   ├── connectors/             # Database connectors (PostgreSQL, MySQL, Tally, Sheets)
+│   ├── core/                   # Chunker, embedder, prompt builder, SQL validator
+│   ├── llm/                    # LLM providers (OpenAI, Anthropic)
+│   └── charts/                 # Chart recommendation engine
+├── docker/                     # Docker configs and init SQL
+├── examples/                   # Sample Indian datasets
+├── tests/                      # 86 unit tests
+└── docker-compose.yml          # One-command local setup
 ```
-
----
 
 ## Contributing
 
-BharatBI is built in the open and welcomes contributions. See [CONTRIBUTING.md](CONTRIBUTING.md).
+We'd love your help! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 **Easy ways to contribute:**
-- 🐛 Report bugs via [GitHub Issues](https://github.com/VineethVadlapalli/bharatbi/issues)
-- 🔌 Add a new data connector (see [Connector Guide](docs/CONNECTOR_GUIDE.md))
-- 🤖 Add a new LLM provider (see [LLM Guide](docs/LLM_GUIDE.md))
-- 🌍 Add Indian dataset examples
-- 📖 Improve documentation
-
----
-
-## Roadmap
-
-See [ROADMAP.md](docs/ROADMAP.md) for the full plan.
-
-- [x] Phase 0: Project setup & skeleton
-- [ ] Phase 1: Core engine (MySQL/PG + chat UI + charts)
-- [ ] Phase 2: Indian connectors (Sheets, Tally, Zoho)
-- [ ] Phase 3: Dashboards, teams, SaaS launch
-
----
+- Add a new data connector (Zoho, Shopify India, Razorpay)
+- Add a new LLM provider (Gemini, Groq, Ollama)
+- Add sample Indian datasets (kirana store, hospital billing, CA firm)
+- Improve prompt engineering for better SQL accuracy
+- Add Hindi/regional language support
 
 ## License
 
-MIT — free forever. See [LICENSE](LICENSE).
+[MIT License](LICENSE) — free forever, for everyone.
 
 ---
 
-## Star History
-
-If BharatBI helps you, please ⭐ the repo — it helps more Indian developers find it.
-
----
-
-*Built for Bharat 🇮🇳 — by the community, for Indian businesses.*
+<p align="center"><strong>Built for Bharat 🇮🇳</strong></p>

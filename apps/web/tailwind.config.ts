@@ -7,13 +7,17 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        saffron: { 50: "#fff7ed", 100: "#ffedd5", 200: "#fed7aa", 400: "#fb923c", 500: "#f97316", 600: "#ea580c", 700: "#c2410c" },
-        navy: { 50: "#f0f4ff", 100: "#dbe4ff", 200: "#bac8ff", 400: "#5c7cfa", 500: "#4263eb", 600: "#3b5bdb", 700: "#364fc7", 800: "#1e3a5f", 900: "#0f1d33" },
-        teal: { 50: "#e6fcf5", 100: "#c3fae8", 400: "#38d9a9", 500: "#20c997", 600: "#12b886" },
+        brand: { 50: "#fef5ee", 100: "#fde8d4", 400: "#e8914f", 500: "#d47e3e", 600: "#c06c30" },
+        navy: { 50: "#f0f4ff", 100: "#dbe4ff", 400: "#5b8ef5", 500: "#4876d9", 700: "#364fc7", 800: "#162038", 900: "#0c1222" },
+        teal: { 50: "#e6fcf5", 100: "#c3fae8", 400: "#34c9a2", 500: "#20b890", 600: "#12a67e" },
       },
       fontFamily: {
-        display: ['"DM Sans"', "system-ui", "sans-serif"],
+        sans: ['"Plus Jakarta Sans"', "system-ui", "-apple-system", "sans-serif"],
         mono: ['"JetBrains Mono"', "monospace"],
+      },
+      borderRadius: {
+        "xl": "14px",
+        "2xl": "18px",
       },
     },
   },

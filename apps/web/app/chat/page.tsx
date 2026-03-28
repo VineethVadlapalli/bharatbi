@@ -1,9 +1,9 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
-import { Send, Loader2, ChevronDown, ChevronUp, Copy, Check, Download, Sparkles, Pin } from "lucide-react";
+import { Send, Loader2, ChevronDown, ChevronUp, Copy, Check, Download, Sparkles, Pin, FileQuestion } from "lucide-react";
 import toast from "react-hot-toast";
 import Sidebar from "@/components/Sidebar";
-import { runQuery, listConnections, pinQuery, type QueryResponse, type Connection } from "@/lib/api";
+import { runQuery, listConnections, pinQuery, explainSQL, type QueryResponse, type Connection } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 import dynamic from "next/dynamic";
 
@@ -266,8 +266,9 @@ function AIMessage({ msg, onSuggestion }: { msg: Message; onSuggestion: (q: stri
           </div>
         </button>
         {sqlOpen && (
-          <div className="px-4 pb-3">
+          <div className="px-4 pb-3 space-y-2">
             <pre className="sql-block text-xs overflow-x-auto">{r.sql}</pre>
+            <ExplainButton sql={r.sql} />
           </div>
         )}
       </div>
@@ -320,6 +321,42 @@ function PinButton({ queryId, question }: { queryId: string; question: string })
       style={{ borderColor: "var(--border)", color: pinned ? "var(--teal)" : "var(--text-secondary)" }}
     >
       <Pin size={12} /> {pinned ? "Pinned" : pinning ? "Pinning..." : "Pin to Dashboard"}
+    </button>
+  );
+}
+
+function ExplainButton({ sql }: { sql: string }) {
+  const [explanation, setExplanation] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleExplain = async () => {
+    setLoading(true);
+    try {
+      const res = await explainSQL(sql);
+      setExplanation(res.data.explanation);
+    } catch {
+      toast.error("Could not explain SQL");
+    }
+    setLoading(false);
+  };
+
+  if (explanation) {
+    return (
+      <div className="text-xs leading-relaxed p-3 rounded-lg" style={{ background: "var(--bg-secondary)", color: "var(--text-secondary)" }}>
+        <div className="flex items-center gap-1.5 mb-1.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-dim)" }}>
+          <FileQuestion size={11} /> Plain English Explanation
+        </div>
+        {explanation}
+      </div>
+    );
+  }
+
+  return (
+    <button onClick={handleExplain} disabled={loading}
+      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors hover:border-[var(--accent)]/40"
+      style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
+      {loading ? <Loader2 size={11} className="animate-spin" /> : <FileQuestion size={11} />}
+      {loading ? "Explaining..." : "Explain this SQL"}
     </button>
   );
 }

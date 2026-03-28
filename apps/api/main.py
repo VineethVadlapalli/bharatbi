@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from apps.api.api.routes import health, connections, query, schema, tally, sheets, dashboard
+from apps.api.api.routes import reports, explain, teams
 
 
 @asynccontextmanager
@@ -24,7 +25,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="BharatBI API",
     description="India's First Open-Source GenBI System",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -49,3 +50,6 @@ app.include_router(schema.router, prefix="/api/schema", tags=["Schema"])
 app.include_router(tally.router, prefix="/api/tally", tags=["Tally"])
 app.include_router(sheets.router, prefix="/api/sheets", tags=["Google Sheets"])
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])
+app.include_router(reports.router, prefix="/api/reports", tags=["Scheduled Reports & Alerts"])
+app.include_router(explain.router, prefix="/api", tags=["SQL Explain"])
+app.include_router(teams.router, prefix="/api/teams", tags=["Teams"])

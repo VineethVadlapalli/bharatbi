@@ -4,7 +4,8 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 const api = axios.create({ baseURL: API_URL, timeout: 60000 });
 
-// Types
+// ── Types ──
+
 export interface Connection {
   id: string;
   name: string;
@@ -37,22 +38,65 @@ export interface SchemaTable {
   columns: { column_name: string; data_type: string; description: string; is_primary_key: boolean }[];
 }
 
-// Connections
+export interface Schedule {
+  id: string;
+  name: string;
+  cron_expression: string;
+  format: string;
+  timezone: string;
+  is_active: boolean;
+  last_run_at?: string;
+  question?: string;
+  created_at: string;
+}
+
+export interface Alert {
+  id: string;
+  name: string;
+  condition: string;
+  threshold: number;
+  column_name: string;
+  check_interval_minutes: number;
+  is_active: boolean;
+  last_triggered_at?: string;
+  question?: string;
+  created_at: string;
+}
+
+export interface TeamMember {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  created_at: string;
+}
+
+export interface TeamInvite {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
+  invited_by_name?: string;
+  created_at: string;
+  expires_at: string;
+}
+
+// ── Connections ──
 export const testConnection = (data: any) => api.post("/api/connections/test", data);
 export const createConnection = (data: any) => api.post<Connection>("/api/connections", data);
 export const listConnections = () => api.get<Connection[]>("/api/connections");
 export const syncConnection = (id: string) => api.post(`/api/connections/${id}/sync`);
 export const getConnection = (id: string) => api.get<Connection>(`/api/connections/${id}`);
 
-// Query
+// ── Query ──
 export const runQuery = (data: { question: string; connection_id: string; llm_provider?: string }) =>
   api.post<QueryResponse>("/api/query", { llm_provider: "openai", ...data });
 export const listQueries = (limit?: number) => api.get(`/api/queries?limit=${limit || 20}`);
 
-// Schema
+// ── Schema ──
 export const getSchema = (connectionId: string) => api.get<SchemaTable[]>(`/api/schema/${connectionId}`);
 
-// Tally
+// ── Tally ──
 export const uploadTally = (file: File, name: string) => {
   const fd = new FormData();
   fd.append("file", file);
@@ -60,7 +104,7 @@ export const uploadTally = (file: File, name: string) => {
   return api.post("/api/tally/upload", fd);
 };
 
-// Sheets
+// ── Sheets ──
 export const uploadCSV = (file: File, name: string, sheetName?: string) => {
   const fd = new FormData();
   fd.append("file", file);
@@ -69,11 +113,45 @@ export const uploadCSV = (file: File, name: string, sheetName?: string) => {
   return api.post("/api/sheets/upload-csv", fd);
 };
 
-// Dashboard
+// ── Dashboard ──
 export const pinQuery = (queryId: string, name?: string) =>
   api.post("/api/dashboard/pin", { query_id: queryId, name: name || "" });
 export const unpinQuery = (queryId: string) =>
   api.delete(`/api/dashboard/pin/${queryId}`);
 export const listPinned = () => api.get("/api/dashboard/pinned");
+
+// ── SQL Explain ──
+export const explainSQL = (sql: string, llmProvider?: string) =>
+  api.post<{ sql: string; explanation: string }>("/api/explain-sql", { sql, llm_provider: llmProvider || "openai" });
+
+// ── Scheduled Reports ──
+export const createSchedule = (data: {
+  name: string; query_id: string; cron_expression: string;
+  recipients?: string[]; format?: string;
+}) => api.post<Schedule>("/api/reports/schedules", data);
+export const listSchedules = () => api.get<Schedule[]>("/api/reports/schedules");
+export const deleteSchedule = (id: string) => api.delete(`/api/reports/schedules/${id}`);
+export const toggleSchedule = (id: string) => api.patch(`/api/reports/schedules/${id}/toggle`);
+
+// ── Alerts ──
+export const createAlert = (data: {
+  name: string; query_id: string; condition: string;
+  threshold: number; column_name: string; check_interval_minutes?: number;
+  notify_emails?: string[];
+}) => api.post<Alert>("/api/reports/alerts", data);
+export const listAlerts = () => api.get<Alert[]>("/api/reports/alerts");
+export const deleteAlert = (id: string) => api.delete(`/api/reports/alerts/${id}`);
+
+// ── Teams ──
+export const listMembers = () => api.get<TeamMember[]>("/api/teams/members");
+export const inviteMember = (email: string, role?: string) =>
+  api.post<TeamInvite>("/api/teams/invite", { email, role: role || "analyst" });
+export const listInvites = () => api.get<TeamInvite[]>("/api/teams/invites");
+export const updateMemberRole = (userId: string, role: string) =>
+  api.patch(`/api/teams/members/${userId}/role`, { role });
+export const removeMember = (userId: string) =>
+  api.delete(`/api/teams/members/${userId}`);
+export const cancelInvite = (inviteId: string) =>
+  api.delete(`/api/teams/invites/${inviteId}`);
 
 export default api;
