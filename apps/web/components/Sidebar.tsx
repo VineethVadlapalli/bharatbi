@@ -1,12 +1,13 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { MessageSquare, Database, LayoutDashboard, History, Settings, Zap } from "lucide-react";
+import { MessageSquare, Database, LayoutDashboard, History, Settings, Zap, Table2 } from "lucide-react";
 import { useAppStore } from "@/lib/store";
 
 const NAV = [
   { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/connections", label: "Connections", icon: Database },
+  { href: "/schema", label: "Schema", icon: Table2 },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/history", label: "History", icon: History },
 ];

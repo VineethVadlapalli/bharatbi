@@ -69,4 +69,11 @@ export const uploadCSV = (file: File, name: string, sheetName?: string) => {
   return api.post("/api/sheets/upload-csv", fd);
 };
 
+// Dashboard
+export const pinQuery = (queryId: string, name?: string) =>
+  api.post("/api/dashboard/pin", { query_id: queryId, name: name || "" });
+export const unpinQuery = (queryId: string) =>
+  api.delete(`/api/dashboard/pin/${queryId}`);
+export const listPinned = () => api.get("/api/dashboard/pinned");
+
 export default api;

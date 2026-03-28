@@ -1,9 +1,9 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
-import { Send, Loader2, ChevronDown, ChevronUp, Copy, Check, Download, Sparkles } from "lucide-react";
+import { Send, Loader2, ChevronDown, ChevronUp, Copy, Check, Download, Sparkles, Pin } from "lucide-react";
 import toast from "react-hot-toast";
 import Sidebar from "@/components/Sidebar";
-import { runQuery, listConnections, type QueryResponse, type Connection } from "@/lib/api";
+import { runQuery, listConnections, pinQuery, type QueryResponse, type Connection } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 import dynamic from "next/dynamic";
 
@@ -75,6 +75,19 @@ export default function ChatPage() {
         <header className="h-14 flex items-center justify-between px-6 border-b shrink-0" style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
           <h1 className="font-display font-semibold text-sm" style={{ color: "var(--text-primary)" }}>Ask your data</h1>
           <div className="flex items-center gap-3">
+            {/* LLM Provider Switcher */}
+            <div className="flex items-center gap-1 p-0.5 rounded-lg" style={{ background: "var(--bg-primary)" }}>
+              {(["openai", "anthropic"] as const).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => useAppStore.getState().setLLMProvider(p)}
+                  className={`text-[11px] font-medium px-2.5 py-1 rounded-md transition-colors ${llmProvider === p ? "bg-saffron-500 text-white" : ""}`}
+                  style={llmProvider !== p ? { color: "var(--text-muted)" } : {}}
+                >
+                  {p === "openai" ? "GPT-4o" : "Claude"}
+                </button>
+              ))}
+            </div>
             <select
               value={activeConnectionId || ""}
               onChange={(e) => setActiveConnection(e.target.value)}
@@ -259,6 +272,11 @@ function AIMessage({ msg, onSuggestion }: { msg: Message; onSuggestion: (q: stri
         )}
       </div>
 
+      {/* Pin to Dashboard */}
+      {r.query_id && (
+        <PinButton queryId={r.query_id} question={r.question} />
+      )}
+
       {/* Follow-up suggestions */}
       {r.suggested_questions?.length > 0 && (
         <div className="flex flex-wrap gap-2">
@@ -270,5 +288,38 @@ function AIMessage({ msg, onSuggestion }: { msg: Message; onSuggestion: (q: stri
         </div>
       )}
     </div>
+  );
+}
+
+function PinButton({ queryId, question }: { queryId: string; question: string }) {
+  const [pinned, setPinned] = useState(false);
+  const [pinning, setPinning] = useState(false);
+
+  const handlePin = async () => {
+    setPinning(true);
+    try {
+      await pinQuery(queryId, question);
+      setPinned(true);
+      toast.success("Pinned to Dashboard!");
+    } catch (err: any) {
+      if (err?.response?.data?.detail?.includes("Already")) {
+        setPinned(true);
+        toast("Already pinned", { icon: "📌" });
+      } else {
+        toast.error("Failed to pin");
+      }
+    }
+    setPinning(false);
+  };
+
+  return (
+    <button
+      onClick={handlePin}
+      disabled={pinned || pinning}
+      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors hover:border-saffron-500/40 disabled:opacity-50"
+      style={{ borderColor: "var(--border)", color: pinned ? "var(--teal)" : "var(--text-secondary)" }}
+    >
+      <Pin size={12} /> {pinned ? "Pinned" : pinning ? "Pinning..." : "Pin to Dashboard"}
+    </button>
   );
 }
