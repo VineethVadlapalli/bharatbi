@@ -117,6 +117,23 @@ services:
       redis:
         condition: service_healthy
 
+# ── Next.js Frontend ──
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile.dev
+    container_name: bharatbi-web
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - api
+
 volumes:
   pgdata:
   demodata:

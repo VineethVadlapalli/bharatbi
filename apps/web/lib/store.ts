@@ -1,77 +1,26 @@
-import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
-import type { Message, Connection, UserSettings, LLMProvider } from '@/types'
+import { create } from "zustand";
 
-// ── Settings store (persisted to localStorage) ────────────
-
-interface SettingsStore {
-  settings: UserSettings
-  setLLMProvider: (p: LLMProvider) => void
-  setOpenAIKey:   (k: string) => void
-  setAnthropicKey:(k: string) => void
-  setActiveConnection: (id: string) => void
+interface AppState {
+  activeConnectionId: string | null;
+  setActiveConnection: (id: string | null) => void;
+  llmProvider: "openai" | "anthropic";
+  setLLMProvider: (p: "openai" | "anthropic") => void;
+  sidebarOpen: boolean;
+  toggleSidebar: () => void;
 }
 
-export const useSettingsStore = create<SettingsStore>()(
-  persist(
-    (set) => ({
-      settings: {
-        llm_provider: 'openai',
-        openai_api_key: '',
-        anthropic_api_key: '',
-        active_connection_id: '',
-      },
-      setLLMProvider:       (p) => set((s) => ({ settings: { ...s.settings, llm_provider: p } })),
-      setOpenAIKey:         (k) => set((s) => ({ settings: { ...s.settings, openai_api_key: k } })),
-      setAnthropicKey:      (k) => set((s) => ({ settings: { ...s.settings, anthropic_api_key: k } })),
-      setActiveConnection:  (id) => set((s) => ({ settings: { ...s.settings, active_connection_id: id } })),
-    }),
-    { name: 'bharatbi-settings' }
-  )
-)
+export const useAppStore = create<AppState>((set) => ({
+  activeConnectionId: null,
+  setActiveConnection: (id) => set({ activeConnectionId: id }),
+  llmProvider: "openai",
+  setLLMProvider: (p) => set({ llmProvider: p }),
+  sidebarOpen: true,
+  toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+}));
 
-// ── Chat store (session only — not persisted) ─────────────
-
-interface ChatStore {
-  messages: Message[]
-  isLoading: boolean
-  addMessage:    (msg: Message) => void
-  updateMessage: (id: string, updates: Partial<Message>) => void
-  clearMessages: () => void
-  setLoading:    (v: boolean) => void
+// Indian number formatting
+export function formatINR(n: number): string {
+  if (Math.abs(n) >= 1_00_00_000) return `₹${(n / 1_00_00_000).toFixed(2)} Cr`;
+  if (Math.abs(n) >= 1_00_000) return `₹${(n / 1_00_000).toFixed(2)} L`;
+  return `₹${n.toLocaleString("en-IN")}`;
 }
-
-export const useChatStore = create<ChatStore>((set) => ({
-  messages:  [],
-  isLoading: false,
-  addMessage:    (msg)     => set((s) => ({ messages: [...s.messages, msg] })),
-  updateMessage: (id, upd) => set((s) => ({
-    messages: s.messages.map((m) => m.id === id ? { ...m, ...upd } : m),
-  })),
-  clearMessages: () => set({ messages: [] }),
-  setLoading:    (v) => set({ isLoading: v }),
-}))
-
-// ── Connections store ─────────────────────────────────────
-
-interface ConnectionsStore {
-  connections: Connection[]
-  setConnections: (cs: Connection[]) => void
-  upsertConnection: (c: Connection) => void
-  removeConnection: (id: string) => void
-}
-
-export const useConnectionsStore = create<ConnectionsStore>((set) => ({
-  connections: [],
-  setConnections:   (cs) => set({ connections: cs }),
-  upsertConnection: (c)  => set((s) => {
-    const existing = s.connections.find((x) => x.id === c.id)
-    if (existing) {
-      return { connections: s.connections.map((x) => x.id === c.id ? c : x) }
-    }
-    return { connections: [...s.connections, c] }
-  }),
-  removeConnection: (id) => set((s) => ({
-    connections: s.connections.filter((c) => c.id !== id),
-  })),
-}))

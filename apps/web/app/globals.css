@@ -1,61 +1,83 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --saffron: #ff6b35;
-  --navy:    #1a2e4a;
-  --teal:    #0d7377;
+  --bg-primary: #0f1d33;
+  --bg-secondary: #162544;
+  --bg-card: #1a2d4e;
+  --bg-hover: #213561;
+  --text-primary: #e8edf5;
+  --text-secondary: #8899b4;
+  --text-muted: #5c6f8a;
+  --border: #253858;
+  --accent: #f97316;
+  --accent-soft: rgba(249, 115, 22, 0.12);
+  --teal: #20c997;
+  --teal-soft: rgba(32, 201, 151, 0.12);
 }
-
-* { box-sizing: border-box; }
-
-html { font-family: 'Inter', system-ui, sans-serif; }
 
 body {
-  @apply bg-gray-50 text-gray-900 antialiased;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'DM Sans', system-ui, sans-serif;
 }
 
-/* ── Scrollbar ──────────────────────────────────────── */
-::-webkit-scrollbar       { width: 6px; height: 6px; }
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { @apply bg-gray-300 rounded-full; }
-::-webkit-scrollbar-thumb:hover { @apply bg-gray-400; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
-/* ── Prose for SQL code blocks ──────────────────────── */
+/* SQL code blocks */
 .sql-block {
-  @apply font-mono text-sm bg-gray-900 text-green-400 rounded-lg p-4 overflow-x-auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  background: #0d1520;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  color: #c9d1d9;
 }
+.sql-block .keyword { color: #ff7b72; }
+.sql-block .function { color: #d2a8ff; }
+.sql-block .string { color: #a5d6ff; }
+.sql-block .number { color: #79c0ff; }
 
-/* ── Chat message bubble ──────────────────────────── */
-.msg-user { @apply ml-auto bg-saffron-500 text-white rounded-2xl rounded-tr-sm px-4 py-3 max-w-[75%]; }
-.msg-ai   { @apply bg-white border border-gray-100 rounded-2xl rounded-tl-sm px-4 py-4 max-w-[90%] shadow-sm; }
-
-/* ── Skeleton shimmer ──────────────────────────────── */
+/* Shimmer loading */
 @keyframes shimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position:  200% 0; }
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
-.skeleton {
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+.shimmer {
+  background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-hover) 50%, var(--bg-card) 75%);
   background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-  @apply rounded;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: 6px;
 }
 
-/* ── Table styles ──────────────────────────────────── */
-.data-table {
-  @apply w-full text-sm border-collapse;
+/* Fade in */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
-.data-table th {
-  @apply bg-gray-50 text-gray-600 font-medium text-left px-3 py-2 border-b border-gray-200 whitespace-nowrap;
-}
-.data-table td {
-  @apply px-3 py-2 border-b border-gray-100 text-gray-700;
-}
-.data-table tr:hover td { @apply bg-gray-50; }
+.fade-in { animation: fadeIn 0.3s ease-out forwards; }
 
-/* ── Sidebar active link ───────────────────────────── */
-.nav-link        { @apply flex items-center gap-3 px-3 py-2 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors text-sm font-medium; }
-.nav-link.active { @apply bg-saffron-50 text-saffron-600; }
+/* Typing dots */
+@keyframes bounce {
+  0%, 80%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-6px); }
+}
+.typing-dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: bounce 1.2s infinite;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.typing-dot:nth-child(3) { animation-delay: 0.3s; }

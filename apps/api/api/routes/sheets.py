@@ -20,8 +20,8 @@ from packages.connectors.google_sheets import (
     fetch_spreadsheet_data, parse_sheets_from_csv,
     create_sheets_staging, build_schema_from_sheets,
 )
-from packages.core.chunker import chunk_schema
-from packages.core.embedder import Embedder
+from packages.core.chunker import schema_to_chunks
+from packages.core.embedder import store_chunks
 
 router = APIRouter()
 
@@ -204,19 +204,25 @@ async def _stage_and_embed(sheets_data, name: str, source_ref: str) -> dict:
     schema_info = build_schema_from_sheets(sheets_data, counts)
 
     try:
-        chunks = chunk_schema(schema_info, connection_id=connection_id)
-        embedder = Embedder()
-        vectors_stored = await embedder.store_chunks(chunks, connection_id=connection_id)
+        chunks = schema_to_chunks(schema_info)
+        point_ids = await store_chunks(connection_id, chunks)
+        vectors_stored = len(point_ids)
 
         async with async_session() as db:
             for table in schema_info.tables:
                 for col in table.columns:
                     await db.execute(
                         text("""
-                            INSERT INTO schema_metadata (connection_id, table_name, column_name, data_type, description)
-                            VALUES (:cid, :table, :col, :dtype, :desc)
+                            INSERT INTO schema_metadata (connection_id, table_name, column_name, data_type, description, is_primary_key, foreign_key)
+                            VALUES (:cid, :table, :col, :dtype, :desc, :pk, :fk)
                         """),
-                        {"cid": connection_id, "table": table.name, "col": col.name, "dtype": col.data_type, "desc": col.description},
+                        {
+                            "cid": connection_id, "table": table.name,
+                            "col": col.name, "dtype": col.data_type,
+                            "desc": col.description,
+                            "pk": col.is_primary_key,
+                            "fk": f"{col.references_table}.{col.references_column}" if col.is_foreign_key else None,
+                        },
                     )
             await db.execute(
                 text("UPDATE connections SET status = 'ready', last_synced_at = NOW() WHERE id = :id"),
